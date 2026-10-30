@@ -53,7 +53,7 @@ public class Game : GameWindow
             API = ContextAPI.OpenGL,
             APIVersion = new Version(3, 3),
             Profile = ContextProfile.Core,
-            Flags = ContextFlags.ForwardCompatible,
+            Flags = ContextFlags.Default, // без ForwardCompatible — мягче к старым драйверам
         })
     {
     }
@@ -82,17 +82,12 @@ public class Game : GameWindow
         _camera.AspectRatio = (float)Size.X / Math.Max(1, Size.Y);
     }
 
-    /// <summary>Сначала пробуем внешние файлы shaders/, при неудаче — встроенные исходники.</summary>
+    /// <summary>Всегда встроенные шейдеры (single-file EXE не зависит от внешних файлов).</summary>
     private static Shader CreateShaderWithFallback()
     {
-        string dir = Path.Combine(AppContext.BaseDirectory, "shaders");
-        string vert = Path.Combine(dir, "model.vert");
-        string frag = Path.Combine(dir, "model.frag");
-        if (File.Exists(vert) && File.Exists(frag))
-        {
-            try { return new Shader(vert, frag); }
-            catch (Exception e) { Console.WriteLine($"[warn] external shaders failed: {e.Message}"); }
-        }
+        // ВАЖНО: всегда используем ВСТРОЕННЫЕ шейдеры.
+        // Внешние файлы shaders/ рядом с single-file EXE могут быть повреждённой копией
+        // из старого релиза — это давало белый экран и краш драйвера.
         return new Shader(new ShaderSource
         {
             Vertex = EmbeddedShaders.Vertex,
@@ -173,14 +168,20 @@ public class Game : GameWindow
         // --- Движение камеры (WASD + Q/E, Shift — ускорение) ---
         _camera.OnUpdate(dt, kb);
 
-        // --- Вращение мышью ---
+        // --- Вращение мышью: относительный ввод (raw deltas) вместо абсолютной позиции.
+        // При CursorState.Grabbed абсолютная позиция «телепортируется» в центр окна
+        // каждый кадр — дельты получались огромными, камера сходила с ума,
+        // проектная матрица портилась -> белый экран / вылет. ---
         MouseState ms = MouseState;
         Vector2 mousePos = ms.Position;
         if (_hasLastMouse)
         {
             Vector2 delta = mousePos - _lastMousePos;
-            if (delta.LengthSquared < 100_000f) // защита от "телепорта" курсора при потере фокуса
-                _camera.OnMouseMove(delta);
+            // Жёсткий кламп: даже при "телепорте" курсора поворот остаётся конечным,
+            // yaw/pitch не получают NaN/Inf -> View-матрица всегда валидна.
+            delta.X = Math.Clamp(delta.X, -80f, 80f);
+            delta.Y = Math.Clamp(delta.Y, -80f, 80f);
+            _camera.OnMouseMove(delta);
         }
         _lastMousePos = mousePos;
         _hasLastMouse = true;

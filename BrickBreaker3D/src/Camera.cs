@@ -56,6 +56,15 @@ public class Camera
 
     public void OnUpdate(float dt, KeyboardState kb)
     {
+        // Защита от NaN/Inf — иначе View-матрица портится и на экране белый пустой кадр
+        if (float.IsNaN(Position.X) || float.IsInfinity(Position.X) ||
+            float.IsNaN(Position.Y) || float.IsInfinity(Position.Y) ||
+            float.IsNaN(Position.Z) || float.IsInfinity(Position.Z))
+        {
+            ResetPose();
+            return;
+        }
+
         var input = Vector3.Zero;
         if (kb.IsKeyDown(Keys.W)) input += Front;
         if (kb.IsKeyDown(Keys.S)) input -= Front;
